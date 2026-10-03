@@ -193,7 +193,7 @@ wss.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Roundtable server listening on http://localhost:${PORT}  (ws path: /ws)`);
   console.log(`Gemini model: ${GEMINI_TRANSCRIBE_MODEL}`);
   if (!GEMINI_API_KEY) {
