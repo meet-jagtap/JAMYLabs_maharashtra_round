@@ -7,6 +7,7 @@ import type {
   TranscriptEvent,
 } from '../../../shared/protocol.ts';
 import { MicStreamer } from './micStreamer.ts';
+import type { MeetingRecord } from './transcriptExport.ts';
 
 export type ConnectionState = 'connecting' | 'open' | 'closed';
 
@@ -46,6 +47,10 @@ export function useRoundtable() {
   const [level, setLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  /** Client time this user joined the current session (stable across silent rejoins). */
+  const [joinedAt, setJoinedAt] = useState<number | null>(null);
+  /** Set after "End meeting"; holds the snapshot shown on the summary screen. */
+  const [meeting, setMeeting] = useState<MeetingRecord | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicStreamer | null>(null);
@@ -92,6 +97,8 @@ export function useRoundtable() {
             setPending(false);
             setError(null);
             const myName = msg.participantName || pendingNameRef.current;
+            const isRejoin = rejoinRef.current?.code === msg.sessionCode;
+            if (!isRejoin) setJoinedAt(Date.now());
             setSession({ code: msg.sessionCode, participantId: msg.participantId, name: myName });
             rejoinRef.current = { code: msg.sessionCode, name: myName };
             setParticipants(msg.participants);
@@ -196,7 +203,47 @@ export function useRoundtable() {
     setParticipants([]);
     setTranscript([]);
     setTranscriber({ status: 'idle' });
+    setJoinedAt(null);
   }, [send, stopMicLocal]);
+
+  // Latest values for the async endMeeting flow (avoids stale closures).
+  const latest = useRef({ transcript, participants, session, joinedAt });
+  useEffect(() => {
+    latest.current = { transcript, participants, session, joinedAt };
+  });
+
+  const [ending, setEnding] = useState(false);
+
+  /**
+   * Ends the meeting for this user: stops the mic, lets Gemini flush the
+   * final segment of any in-progress utterance, snapshots the transcript the
+   * client already holds, then leaves the session. Other participants continue.
+   */
+  const endMeeting = useCallback(async () => {
+    if (!latest.current.session || ending) return;
+    setEnding(true);
+    const wasLive = micRef.current !== null;
+    if (wasLive) {
+      stopMicLocal();
+      send({ type: 'stop_audio' });
+      // The server keeps the Gemini stream open ~1.5 s after audioStreamEnd.
+      await new Promise((r) => setTimeout(r, 1800));
+    }
+    const { transcript: segs, participants: roster, session: s, joinedAt: started } = latest.current;
+    if (s) {
+      setMeeting({
+        sessionCode: s.code,
+        joinedAt: started ?? Date.now(),
+        endedAt: Date.now(),
+        rosterAtEnd: roster,
+        segments: segs,
+      });
+    }
+    leaveSession();
+    setEnding(false);
+  }, [ending, leaveSession, send, stopMicLocal]);
+
+  const closeSummary = useCallback(() => setMeeting(null), []);
 
   return {
     connection,
@@ -208,12 +255,17 @@ export function useRoundtable() {
     level,
     error,
     pending,
+    joinedAt,
+    meeting,
+    ending,
     dismissError: () => setError(null),
     createSession,
     joinSession,
     startMic,
     stopMic,
     leaveSession,
+    endMeeting,
+    closeSummary,
   };
 }
 

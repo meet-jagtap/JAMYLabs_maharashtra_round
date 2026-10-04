@@ -36,15 +36,15 @@ export function Landing({ rt }: { rt: Roundtable }) {
       </header>
 
       <section className="landing__hero">
-        <p className="eyebrow">GDG FCRIT · Bit N Build 2026</p>
+        <p className="eyebrow">JAMY Labs</p>
         <h1 className="landing__title">
           Every voice at the table,
           <br />
           <span className="gradient-text">captioned live.</span>
         </h1>
         <p className="landing__lede">
-          Start a session, share the code, and everyone’s speech appears as real-time captions — attributed to the
-          person who said it. Powered by Gemini Live transcription.
+          Start a session, share the code, and everyone’s speech appears as real-time captions, attributed to the
+          person who said it.
         </p>
       </section>
 
@@ -54,7 +54,7 @@ export function Landing({ rt }: { rt: Roundtable }) {
           <input
             id="display-name"
             className="input"
-            placeholder="e.g. Aditi Sharma"
+            placeholder="e.g. Meet Jagtap"
             maxLength={40}
             autoComplete="nickname"
             value={name}

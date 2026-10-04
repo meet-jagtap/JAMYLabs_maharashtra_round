@@ -3,6 +3,7 @@ import type { Roundtable, SessionState } from '../lib/useRoundtable.ts';
 import { hueFor, initials } from '../lib/format.ts';
 import { ConnectionPill } from './ConnectionPill.tsx';
 import { Brand } from './Landing.tsx';
+import { SessionInsights } from './SessionInsights.tsx';
 import { TranscriptView } from './TranscriptView.tsx';
 
 const TRANSCRIBER_LABEL = {
@@ -57,8 +58,14 @@ export function Room({ rt, session }: { rt: Roundtable; session: SessionState })
         </div>
         <div className="room__top-right">
           <ConnectionPill state={rt.connection} />
-          <button className="btn btn--ghost" id="leave-session" onClick={rt.leaveSession}>
-            Leave
+          <button
+            className="btn btn--end"
+            id="end-meeting"
+            onClick={() => void rt.endMeeting()}
+            disabled={rt.ending}
+            title="Leave this session and view your transcript summary"
+          >
+            {rt.ending ? 'Ending…' : 'End meeting'}
           </button>
         </div>
       </header>
@@ -113,6 +120,8 @@ export function Room({ rt, session }: { rt: Roundtable; session: SessionState })
               </p>
             )}
           </section>
+
+          <SessionInsights participants={rt.participants} transcript={rt.transcript} joinedAt={rt.joinedAt} />
 
           <section className="card people" aria-label="Participants">
             <h2 className="people__title">
