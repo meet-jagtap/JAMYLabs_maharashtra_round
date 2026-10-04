@@ -17,10 +17,13 @@ function getClient(): GoogleGenAI {
   return ai;
 }
 
+import { detectLanguage } from './language.ts';
+
 export interface TranscriptUpdate {
   segmentId: string;
   text: string;
   isFinal: boolean;
+  language?: string;
 }
 
 export interface TranscriberCallbacks {
@@ -171,17 +174,21 @@ export class GeminiTranscriber {
     const content = msg.serverContent;
     if (!content) return;
 
-    const interim = content.interimInputTranscription?.text;
+    const interimObj = content.interimInputTranscription;
+    const interim = interimObj?.text;
     if (interim && interim.trim()) {
       this.segmentId ??= randomUUID();
-      this.cb.onTranscript({ segmentId: this.segmentId, text: interim, isFinal: false });
+      const language = detectLanguage(interim, interimObj?.languageCode);
+      this.cb.onTranscript({ segmentId: this.segmentId, text: interim, isFinal: false, language });
     }
 
-    const final = content.inputTranscription?.text;
+    const finalObj = content.inputTranscription;
+    const final = finalObj?.text;
     if (final && final.trim()) {
       const segmentId = this.segmentId ?? randomUUID();
       this.segmentId = null;
-      this.cb.onTranscript({ segmentId, text: final.trim(), isFinal: true });
+      const language = detectLanguage(final, finalObj?.languageCode);
+      this.cb.onTranscript({ segmentId, text: final.trim(), isFinal: true, language });
     }
   }
 

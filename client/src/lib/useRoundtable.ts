@@ -111,6 +111,19 @@ export function useRoundtable() {
           case 'transcript':
             setTranscript((prev) => upsert(prev, msg.event));
             break;
+          case 'transcript_translation':
+            setTranscript((prev) =>
+              prev.map((item) =>
+                item.segmentId === msg.segmentId
+                  ? {
+                      ...item,
+                      translation: msg.translation,
+                      language: msg.language ?? item.language,
+                    }
+                  : item,
+              ),
+            );
+            break;
           case 'transcriber_status':
             setTranscriber({ status: msg.status, message: msg.message });
             if (msg.status === 'error') stopMicLocal();

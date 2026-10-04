@@ -8,6 +8,18 @@ interface Props {
   selfId: string;
 }
 
+const LANG_LABELS: Record<string, string> = {
+  en: 'English',
+  hi: 'Hindi',
+  mr: 'Marathi',
+  gu: 'Gujarati',
+};
+
+function formatLang(code?: string): string {
+  if (!code) return 'English';
+  return LANG_LABELS[code.toLowerCase()] || code.toUpperCase();
+}
+
 export function TranscriptView({ events, participants, selfId }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -53,6 +65,9 @@ export function TranscriptView({ events, participants, selfId }: Props) {
             {events.map((ev) => {
               const stale = !ev.isFinal && !speaking.has(ev.participantId);
               const hue = hueFor(ev.participantId);
+              const langCode = ev.language || 'en';
+              const isNonEnglish = langCode !== 'en';
+
               return (
                 <li
                   key={ev.segmentId}
@@ -69,6 +84,9 @@ export function TranscriptView({ events, participants, selfId }: Props) {
                         {ev.participantName}
                         {ev.participantId === selfId && <span className="you-tag">you</span>}
                       </span>
+                      <span className="caption__lang" data-lang={langCode}>
+                        {formatLang(langCode)}
+                      </span>
                       <time className="caption__time">{formatTime(ev.timestamp)}</time>
                       {!ev.isFinal && !stale && (
                         <span className="live-tag">
@@ -82,6 +100,9 @@ export function TranscriptView({ events, participants, selfId }: Props) {
                       )}
                     </div>
                     <p className="caption__text">{ev.text}</p>
+                    {isNonEnglish && ev.translation && (
+                      <p className="caption__translation">“{ev.translation}”</p>
+                    )}
                   </div>
                 </li>
               );

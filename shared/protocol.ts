@@ -28,6 +28,10 @@ export interface TranscriptEvent {
   isFinal: boolean;
   /** Server epoch ms when the event was produced. */
   timestamp: number;
+  /** Detected language code: 'en' | 'hi' | 'mr' | 'gu' */
+  language?: string;
+  /** English translation for finalized non-English segments. */
+  translation?: string;
 }
 
 // ---------- client -> server ----------
@@ -53,5 +57,6 @@ export type ServerMessage =
     }
   | { type: 'participants'; participants: ParticipantInfo[] }
   | { type: 'transcript'; event: TranscriptEvent }
+  | { type: 'transcript_translation'; segmentId: string; translation: string; language?: string }
   | { type: 'transcriber_status'; status: TranscriberStatus; message?: string }
   | { type: 'error'; message: string };

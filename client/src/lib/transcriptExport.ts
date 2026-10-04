@@ -84,6 +84,16 @@ function ordered(rec: MeetingRecord): TranscriptEvent[] {
   return [...rec.segments].sort((a, b) => a.timestamp - b.timestamp);
 }
 
+/** Language breakdown of final transcript segments. */
+export function languageBreakdown(segments: TranscriptEvent[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const s of finalSegments(segments)) {
+    const lang = (s.language || 'en').toLowerCase();
+    counts[lang] = (counts[lang] || 0) + 1;
+  }
+  return counts;
+}
+
 // ---------------------------------------------------------------------------
 // Formats
 // ---------------------------------------------------------------------------
@@ -91,18 +101,27 @@ function ordered(rec: MeetingRecord): TranscriptEvent[] {
 export function toTxt(rec: MeetingRecord): string {
   const start = timelineStart(rec);
   const names = meetingParticipants(rec).map((p) => p.name);
+  const langs = languageBreakdown(rec.segments);
+  const langStr = Object.entries(langs).map(([k, v]) => `${k.toUpperCase()} (${v})`).join(', ') || 'English';
+
   const lines = [
     'Roundtable Transcript',
-    `Session: ${rec.sessionCode}`,
+    `Session:      ${rec.sessionCode}`,
     `Participants: ${names.join(', ') || '—'}`,
-    `Duration: ${formatDuration(rec.endedAt - rec.joinedAt)}`,
+    `Duration:     ${formatDuration(rec.endedAt - rec.joinedAt)}`,
+    `Languages:    ${langStr}`,
     '',
   ];
   const segs = ordered(rec);
   if (!segs.length) lines.push('(No speech was transcribed in this session.)');
   for (const s of segs) {
     const tag = s.isFinal ? '' : ' (unfinalized)';
-    lines.push(`[${formatDuration(s.timestamp - start)}] ${s.participantName}${tag}:`, s.text, '');
+    const lang = s.language ? ` [${s.language.toUpperCase()}]` : '';
+    lines.push(`[${formatDuration(s.timestamp - start)}] ${s.participantName}${lang}${tag}:`, s.text);
+    if (s.translation && s.language !== 'en') {
+      lines.push(`  Translation: "${s.translation}"`);
+    }
+    lines.push('');
   }
   return lines.join('\n').trimEnd() + '\n';
 }
@@ -111,6 +130,8 @@ export function toMarkdown(rec: MeetingRecord): string {
   const start = timelineStart(rec);
   const people = meetingParticipants(rec);
   const dist = speakingDistribution(rec.segments);
+  const langs = languageBreakdown(rec.segments);
+  const langStr = Object.entries(langs).map(([k, v]) => `${k.toUpperCase()} (${v})`).join(', ') || 'English';
   const segs = ordered(rec);
   const out: string[] = [
     '# Roundtable Transcript',
@@ -121,6 +142,7 @@ export function toMarkdown(rec: MeetingRecord): string {
     `- **Joined:** ${new Date(rec.joinedAt).toLocaleString()}`,
     `- **Ended:** ${new Date(rec.endedAt).toLocaleString()}`,
     `- **Duration:** ${formatDuration(rec.endedAt - rec.joinedAt)}`,
+    `- **Languages:** ${langStr}`,
     `- **Final segments:** ${finalSegments(segs).length}`,
     `- **Words (final):** ${dist.reduce((n, d) => n + d.words, 0)}`,
     '',
@@ -138,7 +160,13 @@ export function toMarkdown(rec: MeetingRecord): string {
   if (!segs.length) out.push('_No speech was transcribed in this session._');
   for (const s of segs) {
     const tag = s.isFinal ? '' : ' _(unfinalized)_';
-    out.push(`**[${formatDuration(s.timestamp - start)}] ${escapeMd(s.participantName)}**${tag}  `, s.text, '');
+    const lang = s.language ? ` \`[${s.language.toUpperCase()}]\`` : '';
+    out.push(`**[${formatDuration(s.timestamp - start)}] ${escapeMd(s.participantName)}**${lang}${tag}  `, s.text);
+    if (s.translation && s.language !== 'en') {
+      out.push(`> _"${escapeMd(s.translation)}"_\n`);
+    } else {
+      out.push('');
+    }
   }
   return out.join('\n').trimEnd() + '\n';
 }
@@ -152,6 +180,7 @@ export function toJson(rec: MeetingRecord): string {
     joinedAt: new Date(rec.joinedAt).toISOString(),
     endedAt: new Date(rec.endedAt).toISOString(),
     durationMs: rec.endedAt - rec.joinedAt,
+    languages: languageBreakdown(rec.segments),
     participants: meetingParticipants(rec),
     speakingDistribution: speakingDistribution(rec.segments).map(({ participantId, name, words, segments }) => ({
       participantId,
@@ -165,6 +194,8 @@ export function toJson(rec: MeetingRecord): string {
       participantName: s.participantName,
       text: s.text,
       isFinal: s.isFinal,
+      language: s.language || 'en',
+      translation: s.translation,
       timestamp: new Date(s.timestamp).toISOString(),
       offsetMs: Math.max(0, s.timestamp - start),
     })),

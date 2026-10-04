@@ -6,6 +6,8 @@ import type { ClientMessage, ServerMessage, TranscriberStatus } from '../../shar
 import { CLIENT_DIST, GEMINI_API_KEY, GEMINI_TRANSCRIBE_MODEL, PORT } from './config.ts';
 import { SessionStore, type Participant, type Session } from './sessions.ts';
 import { GeminiTranscriber } from './transcriber.ts';
+import { translateToEnglish } from './translator.ts';
+import { sendTranscriptEmail } from './email.ts';
 
 const MAX_NAME_LENGTH = 40;
 /** 100 ms of 16 kHz PCM16 is 3200 bytes; allow generous headroom. */
@@ -30,10 +32,50 @@ const MIME: Record<string, string> = {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
 
+  // Handle CORS preflight for API requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-headers': 'content-type',
+    });
+    res.end();
+    return;
+  }
+
   if (url.pathname === '/api/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'access-control-allow-origin': '*',
+    });
     // Reports only whether a key is configured — never the key itself.
     res.end(JSON.stringify({ ok: true, geminiConfigured: Boolean(GEMINI_API_KEY), model: GEMINI_TRANSCRIBE_MODEL }));
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/send-transcript') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 5 * 1024 * 1024) req.destroy();
+    });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body);
+        const result = await sendTranscriptEmail(payload.email, payload.meeting);
+        res.writeHead(result.ok ? 200 : 400, {
+          'content-type': 'application/json',
+          'access-control-allow-origin': '*',
+        });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(400, {
+          'content-type': 'application/json',
+          'access-control-allow-origin': '*',
+        });
+        res.end(JSON.stringify({ ok: false, message: 'Invalid request body.' }));
+      }
+    });
     return;
   }
 
@@ -114,7 +156,7 @@ wss.on('connection', (socket) => {
 
     p.transcriber = new GeminiTranscriber(`${s.code}/${p.name}`, {
       onStatus: status,
-      onTranscript: (u) =>
+      onTranscript: (u) => {
         store.recordTranscript(s, {
           segmentId: u.segmentId,
           participantId: p.id,
@@ -122,7 +164,26 @@ wss.on('connection', (socket) => {
           text: u.text,
           isFinal: u.isFinal,
           timestamp: Date.now(),
-        }),
+          language: u.language,
+        });
+
+        // Real-time English translation for finalized non-English speech
+        if (u.isFinal && u.language && u.language !== 'en' && u.text.trim()) {
+          const segId = u.segmentId;
+          const textToTranslate = u.text;
+          const lang = u.language;
+          void (async () => {
+            try {
+              const translation = await translateToEnglish(textToTranslate, lang);
+              if (translation) {
+                store.updateTranscriptTranslation(s, segId, translation, lang);
+              }
+            } catch {
+              // Graceful fallback: original transcript is completely unaffected
+            }
+          })();
+        }
+      },
     });
     store.broadcastParticipants(s);
     await p.transcriber.start();

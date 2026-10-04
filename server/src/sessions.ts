@@ -82,6 +82,27 @@ export class SessionStore {
     this.broadcast(session, { type: 'transcript', event });
   }
 
+  updateTranscriptTranslation(
+    session: Session,
+    segmentId: string,
+    translation: string,
+    language?: string,
+  ): void {
+    for (const ev of session.history) {
+      if (ev.segmentId === segmentId) {
+        ev.translation = translation;
+        if (language) ev.language = language;
+        break;
+      }
+    }
+    this.broadcast(session, {
+      type: 'transcript_translation',
+      segmentId,
+      translation,
+      language,
+    });
+  }
+
   participantList(session: Session): ParticipantInfo[] {
     return [...session.participants.values()].map((p) => ({
       id: p.id,
